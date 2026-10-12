@@ -90,12 +90,16 @@ function kennzahlen(dep, von, bis) {
   const anf = vor.length ? vor[vor.length - 1][1] : start;
   const ende = wertBis(dep, bis) ?? anf;
   const tr = dep.trades.filter(t => t.zeit >= von && t.zeit <= bis);
-  let gebuehren = 0, spread = 0, realisiert = 0, verk = 0, treffer = 0;
+  let gebuehren = 0, spread = 0, realisiert = 0, verk = 0, treffer = 0, gewSumme = 0, verlSumme = 0, verlust = 0;
   for (const t of tr) {
     const s = spreadSatz(dep.meta, t.ticker);
     gebuehren += 1;
     spread += t.typ === "Kauf" ? (t.betrag - 1) * s / (1 + s) : (t.betrag + 1) * s / (1 - s);
-    if (t.typ === "Verkauf") { realisiert += t.gewinn ?? 0; verk++; if ((t.gewinn ?? 0) > 0) treffer++; }
+    if (t.typ === "Verkauf") {
+      const g = t.gewinn ?? 0;
+      realisiert += g; verk++;
+      if (g > 0) { treffer++; gewSumme += g; } else if (g < 0) { verlust++; verlSumme += g; }
+    }
   }
   const tage = new Set(dep.verlauf.filter(x => x[0] >= von && x[0] <= bis).map(x => berlinTag(new Date(x[0])))).size || 1;
   const spanneTage = Math.max(1, (Math.min(bis, Date.now()) - Math.max(von, dep.verlauf[0]?.[0] ?? von)) / 864e5);
@@ -107,7 +111,7 @@ function kennzahlen(dep, von, bis) {
     anf, ende, gv: ende - anf, gvp: ende / anf - 1, seitStart: ende / start - 1, trades: tr.length,
     proTag: tr.length / tage, proWoche: tr.length / Math.max(1, spanneTage / 7), proMonat: tr.length / Math.max(1, spanneTage / 30.4),
     gebuehren, spread, kosten: gebuehren + spread, kurs: (ende - anf) + gebuehren + spread, realisiert, unreal,
-    rueck, treffer: verk ? treffer / verk : null, verkaeufe: verk
+    rueck, treffer: verk ? treffer / verk : null, verkaeufe: verk, gewSumme, verlSumme, nGew: treffer, nVerl: verlust
   };
 }
 function veraenderungSeit(dep, ms) {
@@ -251,6 +255,7 @@ function seiteDepot(id) {
         ${kz("Kursgewinn ohne Kosten", eur(k.kurs), kl(k.kurs))}${kz("Handelskosten", eur(k.kosten))}
         ${kz("davon Gebühren", eur(k.gebuehren))}${kz("davon Spread", eur(k.spread))}
         ${kz("realisiert (Verkäufe)", eur(k.realisiert), kl(k.realisiert))}${kz("nicht realisiert (jetzt)", eur(k.unreal), kl(k.unreal))}
+        ${kz(`Summe Verkaufsgewinne (${k.nGew})`, eur(k.gewSumme), "plus")}${kz(`Summe Verkaufsverluste (${k.nVerl})`, eur(k.verlSumme), k.verlSumme < 0 ? "minus" : "")}
         ${kz("Trades", k.trades)}${kz("pro Tag", k.proTag.toFixed(1).replace(".", ","))}
         ${kz("pro Woche", k.proWoche.toFixed(1).replace(".", ","))}${kz("pro Monat", k.proMonat.toFixed(1).replace(".", ","))}
         ${kz("größter Rückgang ⓘ", pct(k.rueck), kl(k.rueck))}${kz("Trefferquote ⓘ", k.treffer == null ? "–" : pct(k.treffer).replace("+", ""))}
