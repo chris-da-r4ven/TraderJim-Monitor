@@ -47,3 +47,7 @@ summary { cursor: pointer; font-weight: 600; }
 input[type=password], input[type=text] { width: 100%; padding: 8px; font: inherit; border-radius: 8px; border: 1px solid var(--linie);
   background: var(--karte); color: var(--text); }
 .uplot { font-family: inherit; }
+.bericht p, .bericht li { font-size: 14px; } .bericht ul { padding-left: 20px; } .bericht hr { border: 0; border-top: 1px solid var(--linie); }
+.tabelle { overflow-x: auto; } .tabelle table { min-width: 520px; }
+@media (max-width: 480px) { header { padding: 10px 12px; } nav a { margin-left: 10px; font-size: 14px; } .logo { font-size: 15px; } }
+@media (max-width: 360px) { nav a { margin-left: 8px; font-size: 13px; } .logo { font-size: 14px; } }

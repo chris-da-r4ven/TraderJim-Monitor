@@ -339,6 +339,52 @@ function seiteVergleich() {
   neu();
 }
 
+// ------------------------------------------------------------------ Wochenberichte (app_daten/wochenberichte/, Markdown)
+function mdInline(t) {
+  return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(^|[\s(])_(.+?)_(?=[\s).,:;!?]|$)/g, "$1<i>$2</i>").replace(/`(.+?)`/g, "<code>$1</code>");
+}
+function markdown(text) {
+  const zeilen = text.split("\n"); let html = "", i = 0;
+  const zellen = z => z.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+  while (i < zeilen.length) {
+    const z = zeilen[i];
+    if (/^\s*\|/.test(z)) {                                   // Tabelle
+      const kopf = zellen(z); i++;
+      if (i < zeilen.length && /^\s*\|[\s:|-]+\|\s*$/.test(zeilen[i])) i++;
+      const zahlSp = kopf.map((_, k) => k > 0);
+      let t = `<div class="karte tabelle"><table><tr>${kopf.map((c, k) => `<th class="${zahlSp[k] ? "z" : ""}">${mdInline(c)}</th>`).join("")}</tr>`;
+      while (i < zeilen.length && /^\s*\|/.test(zeilen[i])) {
+        t += `<tr>${zellen(zeilen[i]).map((c, k) => `<td class="${k > 0 ? "z" : ""} ${/^[+-]\d/.test(c) || /^-\d/.test(c) ? (c.startsWith("-") ? "minus" : "plus") : ""}">${mdInline(c)}</td>`).join("")}</tr>`; i++;
+      }
+      html += t + "</table></div>"; continue;
+    }
+    if (/^- /.test(z)) {                                       // Liste
+      let l = "<ul>"; while (i < zeilen.length && /^- /.test(zeilen[i])) { l += `<li>${mdInline(zeilen[i].slice(2))}</li>`; i++; }
+      html += l + "</ul>"; continue;
+    }
+    if (/^### /.test(z)) html += `<h3>${mdInline(z.slice(4))}</h3>`;
+    else if (/^## /.test(z)) html += `<h3>${mdInline(z.slice(3))}</h3>`;
+    else if (/^# /.test(z)) html += `<h2>${mdInline(z.slice(2))}</h2>`;
+    else if (/^---\s*$/.test(z)) html += "<hr>";
+    else if (z.trim()) html += `<p>${mdInline(z)}</p>`;
+    i++;
+  }
+  return html;
+}
+async function seiteBerichte() {
+  $("#app").innerHTML = `<h2>Wochenberichte</h2><p class="hinweis">Lädt …</p>`;
+  const idx = JSON.parse((await datei("app_daten/wochenberichte/index.json")) || "[]");
+  $("#app").innerHTML = `<h2>Wochenberichte</h2>` + (idx.length
+    ? `<div class="karte">${idx.map(e => `<div class="zeile" style="padding:8px 0;border-bottom:1px solid var(--linie)"><a href="#/bericht/${encodeURIComponent(e.datei)}">${esc(e.titel)}</a></div>`).join("")}</div>`
+    : `<div class="karte"><p>Noch kein Bericht vorhanden.</p><p class="hinweis">Der erste erscheint am Freitagabend (ca. 0:30 Uhr), zusammen mit der E-Mail.</p></div>`);
+}
+async function seiteBericht(name) {
+  if (!/^[\w.-]+\.md$/.test(name)) return seiteBerichte();
+  $("#app").innerHTML = `<p class="hinweis">Lädt …</p>`;
+  const t = await datei("app_daten/wochenberichte/" + name);
+  $("#app").innerHTML = `<p><a href="#/berichte">← alle Berichte</a></p>` + (t ? `<div class="bericht">${markdown(t)}</div>` : `<div class="karte">Bericht nicht gefunden.</div>`);
+}
+
 function seiteEinstellungen(meldung = "") {
   $("#app").innerHTML = `<h2>Einstellungen</h2><div class="karte">
     <p><b>Lese-Schlüssel für GitHub</b><br><span class="hinweis">Wird nur auf diesem Gerät gespeichert. Er darf nur das Repository TraderJim lesen (Contents: Read-only). Bei Verlust des Geräts auf github.com unter Settings → Developer settings → Personal access tokens widerrufen.</span></p>
@@ -362,6 +408,8 @@ function route() {
   statuszeile();
   if (h.startsWith("#/depot/")) return seiteDepot(decodeURIComponent(h.slice(8)));
   if (h.startsWith("#/vergleich")) return seiteVergleich();
+  if (h.startsWith("#/berichte")) return seiteBerichte();
+  if (h.startsWith("#/bericht/")) return seiteBericht(decodeURIComponent(h.slice(10)));
   return seiteStart();
 }
 
