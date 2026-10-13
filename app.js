@@ -100,11 +100,14 @@ function kennzahlen(dep, von, bis) {
   const anf = vor.length ? vor[vor.length - 1][1] : start;
   const ende = wertBis(dep, bis) ?? anf;
   const tr = dep.trades.filter(t => t.zeit >= von && t.zeit <= bis);
+  const sAlt = 0.0003;   // E-062: Vergleich mit Xetra-nahem Spread (nur Anzeige, Daytrading)
+  let spreadAlt = 0;
   let gebuehren = 0, spread = 0, realisiert = 0, verk = 0, treffer = 0, gewSumme = 0, verlSumme = 0, verlust = 0;
   for (const t of tr) {
     const s = spreadSatz(dep.meta, t.ticker);
     gebuehren += 1;
     spread += t.typ === "Kauf" ? (t.betrag - 1) * s / (1 + s) : (t.betrag + 1) * s / (1 - s);
+    spreadAlt += t.typ === "Kauf" ? (t.betrag - 1) * sAlt / (1 + sAlt) : (t.betrag + 1) * sAlt / (1 - sAlt);
     if (t.typ === "Verkauf") {
       const g = t.gewinn ?? 0;
       realisiert += g; verk++;
@@ -120,7 +123,7 @@ function kennzahlen(dep, von, bis) {
   return {
     anf, ende, gv: ende - anf, gvp: ende / anf - 1, seitStart: ende / start - 1, trades: tr.length,
     proTag: tr.length / tage, proWoche: tr.length / Math.max(1, spanneTage / 7), proMonat: tr.length / Math.max(1, spanneTage / 30.4),
-    gebuehren, spread, kosten: gebuehren + spread, kurs: (ende - anf) + gebuehren + spread, realisiert, unreal,
+    gebuehren, spread, kosten: gebuehren + spread, gvAlt: (ende - anf) + spread - spreadAlt, kurs: (ende - anf) + gebuehren + spread, realisiert, unreal,
     rueck, treffer: verk ? treffer / verk : null, verkaeufe: verk, gewSumme, verlSumme, nGew: treffer, nVerl: verlust
   };
 }
@@ -264,12 +267,13 @@ function seiteDepot(id) {
         ${kz("Gewinn/Verlust", eur(k.gv), kl(k.gv))}${kz("in Prozent", pct(k.gvp), kl(k.gvp))}
         ${kz("Kursgewinn ohne Kosten", eur(k.kurs), kl(k.kurs))}${kz("Handelskosten", eur(k.kosten))}
         ${kz("davon Gebühren", eur(k.gebuehren))}${kz("davon Spread", eur(k.spread))}
+        ${dep.gruppe === "daytrading" ? kz("Gewinn/Verlust bei 0,03 % Spread ⓘ", eur(k.gvAlt), kl(k.gvAlt)) : ""}
         ${kz("realisiert (Verkäufe)", eur(k.realisiert), kl(k.realisiert))}${kz("nicht realisiert (jetzt)", eur(k.unreal), kl(k.unreal))}
         ${kz(`Summe Verkaufsgewinne (${k.nGew})`, eur(k.gewSumme), "plus")}${kz(`Summe Verkaufsverluste (${k.nVerl})`, eur(k.verlSumme), k.verlSumme < 0 ? "minus" : "")}
         ${kz("Trades", k.trades)}${kz("pro Tag", k.proTag.toFixed(1).replace(".", ","))}
         ${kz("pro Woche", k.proWoche.toFixed(1).replace(".", ","))}${kz("pro Monat", k.proMonat.toFixed(1).replace(".", ","))}
         ${kz("größter Rückgang ⓘ", pct(k.rueck), kl(k.rueck))}${kz("Trefferquote ⓘ", k.treffer == null ? "–" : pct(k.treffer).replace("+", ""))}
-      </div><p class="hinweis">ⓘ Größter Rückgang: wie weit der Wert im Zeitraum höchstens unter seinen bisherigen Höchststand gefallen ist. Trefferquote: Anteil der Verkäufe mit Gewinn.</p></div>
+      </div><p class="hinweis">ⓘ Größter Rückgang: wie weit der Wert im Zeitraum höchstens unter seinen bisherigen Höchststand gefallen ist. Trefferquote: Anteil der Verkäufe mit Gewinn.${dep.gruppe === "daytrading" ? " Bei 0,03 % Spread: dieselben Trades, aber mit dem an Xetra gemessenen Spread großer Werte statt der vorsichtigen 0,1 % des Tests." : ""}</p></div>
       <h3>Gehaltene Werte</h3>
       <div class="karte">${(m.positionen_detail || []).length ? `<table><tr><th>Wert</th><th>seit</th><th class="z">Einstand</th><th class="z">aktuell</th><th class="z">+/−</th></tr>
         ${m.positionen_detail.map(p => { const a = p.aktueller_wert ?? p.einstand, d = a - p.einstand;
