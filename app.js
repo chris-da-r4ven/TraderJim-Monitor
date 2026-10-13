@@ -45,12 +45,13 @@ async function datei(pfad) {
   return r.text();
 }
 
-const D = { status: null, strategien: {}, vergleich: [], depots: {} };   // depots[id] = {meta, verlauf:[[ms,wert]], trades:[...]}
+const D = { status: null, strategien: {}, vergleich: [], depots: {}, wp: {} };   // depots[id] = {meta, verlauf:[[ms,wert]], trades:[...]}
 
 async function laden() {
   const st = JSON.parse(await datei("app_daten/status.json"));
   D.status = st;
   D.strategien = JSON.parse(await datei("app_daten/strategien.json") || "{}");
+  D.wp = JSON.parse(await datei("app_daten/wertpapiere.json") || "{}");
   const vtext = await datei("app_daten/vergleich.csv");
   D.vergleich = vtext ? csv(vtext) : [];
   const cache = {};
@@ -70,6 +71,15 @@ async function laden() {
     D.depots[d.id] = { meta: d, gruppe: g.id, verlauf, trades };
   }
   localStorage.setItem("tj_letzte_daten", new Date().toISOString());
+}
+
+// Kürzel fett, darunter klein: Name · ISIN (app_daten/wertpapiere.json)
+function wertHtml(ticker, nameFallback) {
+  const w = D.wp[ticker] || {};
+  const name = w.name || (nameFallback && nameFallback !== ticker ? nameFallback : "");
+  const nr = w.isin ? "ISIN " + w.isin : (w.art === "Kryptowährung" ? "Kryptowährung, keine ISIN" : "");
+  const unter = [name, nr].filter(Boolean).join(" · ");
+  return `<b>${esc(ticker)}</b>${unter ? `<br><span class="wp">${esc(unter)}</span>` : ""}`;
 }
 
 // ------------------------------------------------------------------ Kennzahlen (Regeln: SCHNITTSTELLE.md)
@@ -263,14 +273,14 @@ function seiteDepot(id) {
       <h3>Gehaltene Werte</h3>
       <div class="karte">${(m.positionen_detail || []).length ? `<table><tr><th>Wert</th><th>seit</th><th class="z">Einstand</th><th class="z">aktuell</th><th class="z">+/−</th></tr>
         ${m.positionen_detail.map(p => { const a = p.aktueller_wert ?? p.einstand, d = a - p.einstand;
-          return `<tr><td>${esc(p.wert)}</td><td>${esc(p.kauf_tag || "")}</td><td class="z">${eur(p.einstand)}</td><td class="z">${eur(a)}</td><td class="z ${kl(d)}">${eur(d)}</td></tr>`; }).join("")}</table>`
+          return `<tr><td>${wertHtml(p.wert)}</td><td>${esc(p.kauf_tag || "")}</td><td class="z">${eur(p.einstand)}</td><td class="z">${eur(a)}</td><td class="z ${kl(d)}">${eur(d)}</td></tr>`; }).join("")}</table>`
         : '<p class="hinweis">Zurzeit keine Positionen (alles in Cash).</p>'}</div>
       <h3>Kauf- und Verkaufshistorie</h3>
       <div class="karte">${Object.keys(tradeTage).length ? Object.entries(tradeTage).map(([tag, ts], i) => {
         const g = ts.reduce((a, t) => a + (t.gewinn ?? 0), 0);
         return `<details ${i === 0 ? "open" : ""}><summary>${tagStr(new Date(tag + "T12:00:00"))} · ${ts.length} Trades · Ergebnis Verkäufe <span class="${kl(g)}">${eur(g)}</span></summary>
           <table>${ts.map(t => `<tr><td>${t.zeit.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })}</td>
-            <td><b>${esc(t.typ)}</b> ${esc(t.name)}${t.anteil < 1 ? ` (${Math.round(t.anteil * 100)} %)` : ""}<br><span class="hinweis">${esc(t.grund)}</span></td>
+            <td>${esc(t.typ)}${t.anteil < 1 ? ` (${Math.round(t.anteil * 100)} %)` : ""}: ${wertHtml(t.ticker, t.name)}<br><span class="hinweis">${esc(t.grund)}</span></td>
             <td class="z">${eur(t.betrag)}${t.gewinn != null ? `<br><span class="${kl(t.gewinn)}">${eur(t.gewinn)}</span>` : ""}</td></tr>`).join("")}</table></details>`;
       }).join("") : '<p class="hinweis">Noch keine Trades.</p>'}</div>
       <h3>Kauf → Verkauf (Paare)</h3>
@@ -299,16 +309,16 @@ function paareHtml(dep) {
     if (t.typ === "Kauf") (offen[t.ticker] ||= []).push({ ...t, rest: 1 });
     else {
       const l = (offen[t.ticker] || [])[0];
-      paare.push({ name: t.name, kauf: l?.zeit, verkauf: t.zeit, anteil: t.anteil, gewinn: t.gewinn, grund: t.grund });
+      paare.push({ ticker: t.ticker, name: t.name, kauf: l?.zeit, verkauf: t.zeit, anteil: t.anteil, gewinn: t.gewinn, grund: t.grund });
       if (l) { l.rest -= t.anteil >= 0.999 ? l.rest : t.anteil * l.rest; if (l.rest <= 0.001) offen[t.ticker].shift(); }
     }
   }
-  for (const [tk, ls] of Object.entries(offen)) for (const l of ls) paare.push({ name: l.name, kauf: l.zeit, verkauf: null, anteil: l.rest });
+  for (const [tk, ls] of Object.entries(offen)) for (const l of ls) paare.push({ ticker: tk, name: l.name, kauf: l.zeit, verkauf: null, anteil: l.rest });
   if (!paare.length) return '<p class="hinweis">Noch keine Trades.</p>';
   paare.sort((a, b) => (b.verkauf || Infinity) - (a.verkauf || Infinity) || b.kauf - a.kauf);
   const dauer = (a, b) => { const h = ((b || Date.now()) - a) / 36e5; return h < 24 ? Math.round(h) + " Std." : (h / 24).toFixed(1).replace(".", ",") + " Tage"; };
   return `<details><summary>${paare.length} Positionen anzeigen</summary><table><tr><th>Wert</th><th>gekauft</th><th>verkauft</th><th class="z">Dauer</th><th class="z">Ergebnis</th></tr>
-    ${paare.slice(0, 300).map(p => `<tr><td>${esc(p.name)}${p.anteil < 0.999 ? ` (${Math.round(p.anteil * 100)} %)` : ""}</td><td>${p.kauf ? zeitStr(p.kauf) : "–"}</td>
+    ${paare.slice(0, 300).map(p => `<tr><td>${wertHtml(p.ticker, p.name)}${p.anteil < 0.999 ? ` (${Math.round(p.anteil * 100)} %)` : ""}</td><td>${p.kauf ? zeitStr(p.kauf) : "–"}</td>
       <td>${p.verkauf ? zeitStr(p.verkauf) : "<i>offen</i>"}</td><td class="z">${p.kauf ? dauer(p.kauf, p.verkauf) : ""}</td>
       <td class="z ${kl(p.gewinn)}">${p.gewinn != null ? eur(p.gewinn) : ""}</td></tr>`).join("")}</table></details>`;
 }
