@@ -103,11 +103,12 @@ function kennzahlen(dep, von, bis) {
   const sAlt = 0.0003;   // E-062: Vergleich mit Xetra-nahem Spread (nur Anzeige, Daytrading)
   let spreadAlt = 0;
   let gebuehren = 0, spread = 0, realisiert = 0, verk = 0, treffer = 0, gewSumme = 0, verlSumme = 0, verlust = 0;
+  const g = dep.meta.gebuehr_je_order ?? 1;   // Bitvavo-Konto: keine feste Gebühr (E-077)
   for (const t of tr) {
     const s = spreadSatz(dep.meta, t.ticker);
-    gebuehren += 1;
-    spread += t.typ === "Kauf" ? (t.betrag - 1) * s / (1 + s) : (t.betrag + 1) * s / (1 - s);
-    spreadAlt += t.typ === "Kauf" ? (t.betrag - 1) * sAlt / (1 + sAlt) : (t.betrag + 1) * sAlt / (1 - sAlt);
+    gebuehren += g;
+    spread += t.typ === "Kauf" ? (t.betrag - g) * s / (1 + s) : (t.betrag + g) * s / (1 - s);
+    spreadAlt += t.typ === "Kauf" ? (t.betrag - g) * sAlt / (1 + sAlt) : (t.betrag + g) * sAlt / (1 - sAlt);
     if (t.typ === "Verkauf") {
       const g = t.gewinn ?? 0;
       realisiert += g; verk++;
@@ -302,6 +303,7 @@ function seiteDepot(id) {
       reihen.push({ name: n, punkte: r.map(p => [p[0], p[1] / r[0][1] * basis]), farbe: FARBEN[i++ % FARBEN.length], gestrichelt: true });
     }
     if (dep.gruppe === "daytrading" && id !== "VGL") reihen.push({ name: "Vergleich: einfach halten", punkte: D.depots.VGL.verlauf, farbe: VGL_FARBE, gestrichelt: true });
+    if (dep.gruppe === "bitcoin" && id !== "BHALT" && D.depots.BHALT) reihen.push({ name: "Vergleich: Bitcoin halten", punkte: D.depots.BHALT.verlauf, farbe: VGL_FARBE, gestrichelt: true });
     zeichne($("#chart"), reihen, von, bis, Z.einheit);
   };
   neu();
